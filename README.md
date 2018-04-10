@@ -1,4 +1,4 @@
-ReadME
+virman Readme
 
 1. If run these scripts on Xenserver, please first configure the env for xenserver
     with the scripts initial_env.sh
