@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     virthost = VirtHostDomain(host_name, user, passwd)
     if not virthost:
-        log.fail("Can not connect to virtual driver, initial VirtHostDomain failed.")
+        log.fail("Can not connect to virtual driver or DB driver, initial VirtHostDomain failed.")
         exit(1)
 
     virt_driver = virthost.virt_driver
@@ -48,7 +48,7 @@ if __name__ == "__main__":
             exit(1)
         #  need user to confirm the input
         # answer = input("Are you sure to delete those VMs: %s ?(Yes/No)" % args)
-        prompt = "Are you sure to delete those VMs: %s? (Yes/No)\n" % args
+        prompt = "Are you sure to delete those VMs: %s? (Yes/No)\n" % vm_name
         answer = timeout_func(raw_input, 5, None, prompt)
         if answer != "Yes":
             log.info("Your input is not 'Yes'. Exiting...")

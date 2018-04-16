@@ -23,6 +23,10 @@ class ServerDomain(object):
         if self.virt_driver and self.vnet_driver and self.db_driver:
             return True
         else:
+            if not self.virt_driver or not self.vnet_driver:
+                log.error("Can not connect to virtual driver.")
+            if not self.db_driver:
+                log.error("Can not connect to DB driver.")
             return False
 
     @property
@@ -78,7 +82,11 @@ class ServerDomain(object):
         all_pifs = self.vnet_driver.get_all_devices()
         for pif_index, pif_name in enumerate(sorted(all_pifs)):
             pif_infor = self.vnet_driver.get_device_infor(device_name=pif_name)
-            log.info("%s\t%s\tMAC: %s, IP: %s", pif_index, pif_name, pif_infor.get('MAC'), pif_infor.get('IP'))
+            bridge_name = self.vnet_driver.get_bridge_name(device_name=pif_name)
+            mac = pif_infor.get('MAC')
+            ip = pif_infor.get('IP')
+            ip = ip if ip else None
+            log.info("%s\t%s\tMAC: %s, IP: %15s, Bridge: %s", pif_index, pif_name, mac, ip, bridge_name)
 
         return True
 
