@@ -237,7 +237,7 @@ class ServerDomain(object):
 
         disk_num = len(filter(lambda x: int(x[0]) > 10, self.get_host_all_storage_info().values()))
         default_storage = self.virt_driver.get_host_storage_info()  # only write the system disk size
-        disk_size = default_storage.get('size_total')
+        disk_size = default_storage.get('size_total', 0)
 
         first_ip = self.vnet_driver.get_host_manage_interface_infor().get('IP')
 
