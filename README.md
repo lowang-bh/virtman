@@ -1,4 +1,4 @@
-virman Readme
+ReadME
 
 1. If run these scripts on Xenserver, please first configure the env for xenserver
     with the scripts initial_env.sh
@@ -19,8 +19,12 @@ virman Readme
     4). set up the DB_HOST, eg: example.com or 127.0.0.1:8000 for localhost test
 
         export DB_HOST=127.0.0.1:8000
+        
+    5). setup the platform env: Xen for xenserver or QEMU for KVM platform, the default is Xen
 
-    5). Log server is available to write the debug and exception infor to /var/log/virt.log. Remember to use sudo when
+        export PLATFORM=QEMU
+
+    6). Log server is available to write the debug and exception infor to /var/log/virt.log. Remember to use sudo when
         start the log server in case of no permission to the directory /var/log
 
         sudo nohup python /Users/wang/mygit/dev_xen/lib/Log/logging_server.py &
