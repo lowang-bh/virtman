@@ -45,6 +45,14 @@ if [[ $mymac == 00:66* ]];then
 
     MyGW=`echo $MyIP | awk -F. '{print $1"."$2"."$3".1"}'`
     MyBC=`echo $MyIP | awk -F. '{print $1"."$2"."$3".255"}'`
+    if [[ ! -f /etc/sysconfig/network-scripts/ifcfg-$myeth ]];then
+        touch /etc/sysconfig/network-scripts/ifcfg-$myeth
+        echo "TYPE=Ethernet" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
+        echo "BOOTPROTO=static" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
+        echo "NAME=$myeth" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
+        echo "ONBOOT=yes" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
+        echo "PREFIX=24" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
+    fi
     grep_res=$(grep "IPADDR=" /etc/sysconfig/network-scripts/ifcfg-$myeth 2> /dev/null)
     if [[ $grep_res != IPADDR=* && -f /etc/sysconfig/network-scripts/ifcfg-$myeth ]];then
         echo "write ip to /etc/sysconfig/network-scripts/ifcfg-$myeth"
@@ -52,13 +60,20 @@ if [[ $mymac == 00:66* ]];then
         echo "GATEWAY=$MyGW" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
         echo "BROADCAST=$MyBC" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
         echo "DNS1=8.8.8.8" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
-        echo "DNS2=192.168.10.10" >> /etc/sysconfig/network-scripts/ifcfg-$myeth
     elif [[ $grep_res == IPADDR=* ]];then
         echo "origin IP on $myeth:$grep_res, set to new: $MyIP"
         sed -i "s/^IPADDR=.*$/IPADDR=$MyIP/" /etc/sysconfig/network-scripts/ifcfg-$myeth
     else
         echo "Already configed $myeth"
     fi
+    #write the MAC to configfile, in case of the ip will be randomly on interface when restart network
+    grep "HWADDR" /etc/sysconfig/network-scripts/ifcfg-$myeth 2> /dev/null
+    if [[ $? -eq 0 ]];then
+        sed -i "s/^HWADDR=.*$/HWADDR=$mymac/" /etc/sysconfig/network-scripts/ifcfg-$myeth
+    else
+        sed -i "/IPADDR/a\HWADDR=$mymac" /etc/sysconfig/network-scripts/ifcfg-$myeth
+    fi
+
     #config the IP when system up
     ifconfig $myeth $MyIP netmask 255.255.255.0
     #add default GW only when gw match the IP 10.* for a whole net, other IP as 192.168* will discard
