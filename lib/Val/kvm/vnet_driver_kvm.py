@@ -62,7 +62,7 @@ class QemuVnetDriver(VnetDriver):
                 url = "{0}{1}{2}".format('qemu+tcp://', self.hostname, '/system')
                 self._hypervisor_handler = libvirt.openAuth(url, self._auth, 0)
         except Exception as error:
-            log.warn("Can not connect to url: %s, error: %s. Retrying...", url, error)
+            log.debug("Can not connect to url: %s, error: %s. Retrying...", url, error)
             signal.alarm(4)
             try:
                 url = "{0}{1}{2}".format('qemu+tls://', self.hostname, '/system')
