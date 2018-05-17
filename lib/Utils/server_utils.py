@@ -102,6 +102,15 @@ class ServerDomain(object):
                 log.info("%s\tMAC: %s, IP: %s", device_infor['device'], device_infor.get('MAC'), device_infor.get('IP'))
         return True
 
+    def print_all_vms(self):
+        """
+        :return:
+        """
+        log.info("All VMs in server: %s", self.server_name)
+        vms = self.virt_driver.get_vm_list()
+        log.info(vms)
+        return True
+
     def get_host_all_storage_info(self):
         """
         :return:
@@ -183,11 +192,6 @@ class ServerDomain(object):
         dest_gateway = None
         if device is not None:
             try:
-                # host_name = kwargs['host']
-                # user = kwargs['user'] if kwargs['user'] else "root"
-                # passwd = str(kwargs['passwd']).replace('\\', '') if kwargs['passwd'] else ""
-                # vnet_driver = VirtFactory.get_vnet_driver(host_name, user, passwd)
-
                 device_info = self.vnet_driver.get_device_infor(device_name=device)
                 dest_metmask = device_info["netmask"]
                 dest_gateway = device_info['gateway']
