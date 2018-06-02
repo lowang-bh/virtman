@@ -102,7 +102,7 @@ class QemuVnetDriver(VnetDriver):
             else:
                 dom = hv_handler.lookupByID(domain_id)
             return dom
-        except libvirtError, e:
+        except libvirtError as e:
             log.exception(str(e))
             return None
 
@@ -149,8 +149,8 @@ class QemuVnetDriver(VnetDriver):
 
     def is_network_exist(self, network_name):
         """
-        @param network_name: the name of network created on bridge(when use linux bridge) or switch(when use openvswitch)
-        @return: Ture if exist or False
+        @param network_name:the name of network created on bridge(when use linux bridge) or switch(when use openvswitch)
+        @return: True if exist or False
         """
         if network_name in self.get_network_list():
             return True
@@ -185,7 +185,7 @@ class QemuVnetDriver(VnetDriver):
         default_infor = {}
 
         device_tree = xmlEtree.fromstring(device_dom.XMLDesc())
-        ip_element =  device_tree.find("protocol[@family='ipv4']/ip")
+        ip_element = device_tree.find("protocol[@family='ipv4']/ip")
         if ip_element is not None:
             prefix, ip = ip_element.attrib.get('prefix'), ip_element.attrib.get('address', None)
             default_infor.setdefault('IP', ip)
@@ -201,40 +201,51 @@ class QemuVnetDriver(VnetDriver):
 
         return default_infor
 
-    def set_mac_address(self, inst_name, eth_index, mac):
-        '''
+    # VM interface API
+    def set_mac_address(self, inst_name, eth_index, new_mac):
+        """
         <mac address='52:54:00:68:43:c2'/>
-        '''
-        vm_name = inst_name
-        domain = self._get_domain_handler(domain_name=vm_name)
+        """
+        domain = self._get_domain_handler(domain_name=inst_name)
         if not domain:
             log.error("Domain %s doesn't exist, set mac failed.", inst_name)
             return False
+
         if domain.isActive():
-            self.power_off_vm(vm_name)
+            log.warn("New MAC will take effect after domain reboot.")
+
+        vif_list = self._get_dom_interfaces_elements_list(inst_name)
+        try:
+            interface = vif_list[eth_index]
+            mac_element = interface.find("mac")
+            old_mac = mac_element.get("address")
+        except IndexError:
+            log.exception("No interfaces at index [%s] find in domain [%s]",eth_index, inst_name)
+            return False
 
         tree = xmlEtree.fromstring(domain.XMLDesc())
         mac_list = tree.findall('devices/interface/mac')
         try:
-            mac_element = mac_list[eth_index]
-            log.debug("Change mac to %s on interface index %s", mac, eth_index)
-        except IndexError:
-            log.error("No interface with index %s on domain: %s", eth_index, inst_name)
+            for mac_element in mac_list:
+                if mac_element.get("address") == old_mac:
+                    log.debug("Change old mac [%s] to new [%s] on interface index %s", old_mac, new_mac, eth_index)
+                    mac_element.set("address", new_mac)
+        except ValueError as error:
+            log.exception("Exception when set mac: %s on domain: [%s]", error, inst_name)
             return False
 
-        mac_element.set('address', mac)
         domain_xml = xmlEtree.tostring(tree)
 
         # after change the xml, redeine it
         hv_handler = self.get_handler()
         if not hv_handler:
-            log.error("Can not connect to host: %s when create domain %s.", self.hostname, vm_name)
+            log.error("Can not connect to host: %s when create domain %s.", self.hostname, inst_name)
             return False
         try:
             # if failed it will raise libvirtError, return value is always a Domain object
             _ = hv_handler.defineXML(domain_xml)
         except libvirtError:
-            log.error("Create domain %s failed when define by xml.", vm_name)
+            log.error("Create domain %s failed when define by xml after set MAC.", inst_name)
             return False
 
         return True
@@ -244,34 +255,58 @@ class QemuVnetDriver(VnetDriver):
         :param eth_index: index of virtual interface
         :return:
         """
+        vif_list = self._get_dom_interfaces_elements_list(inst_name)
+
+        # tree = xmlEtree.fromstring(domain.XMLDesc())
+        # mac_list = tree.findall('devices/interface/mac')
+        try:
+            interface = vif_list[eth_index]
+            mac_element = interface.find("mac")
+            return mac_element.get("address")
+        except IndexError:
+            log.error("No interfaces at index [%s] find in domain [%s]",eth_index, inst_name)
+            return None
+
+    def _get_dom_interfaces_elements_list(self, inst_name):
+        """
+        :param inst_name:
+        :return: a list of interface element, sorted with the slot of interfaces
+        """
+        if not self._hypervisor_handler:
+            self._hypervisor_handler = self.get_handler()
+
         domain = self._get_domain_handler(domain_name=inst_name)
         if not domain:
-            log.error("Domain %s doesn't exist, set mac failed.", inst_name)
-            return None
+            log.error("Domain %s doesn't exist, can not get interfaces information.", inst_name)
+            return []
 
+        interface_dict = {}
         tree = xmlEtree.fromstring(domain.XMLDesc())
-        mac_list = tree.findall('devices/interface/mac')
-        try:
-            mac_element = mac_list[eth_index]
-        except IndexError:
-            log.error("No interface with index %s on domain: %s", eth_index, inst_name)
-            return None
-
-        return mac_element.get('address')  # If no key with address, will return None
+        interface_list = tree.findall('devices/interface')
+        for interface in interface_list:
+            address_element = interface.find('address')
+            slot = address_element.attrib.get('slot', None)
+            if slot:
+                interface_dict[int(slot, 16)] = interface
+        # a list of interface element, sorted by interface/address/slot.
+        return [interface_dict[key] for key in sorted(interface_dict)]
 
     def get_all_vifs_indexes(self, inst_name):
         """
         @param inst_name: vm name
-        @return: a list of all the index of interface device in guest VM
+        @return: a list of all the index of interface device
         """
-        raise NotImplementedError()
+        return [i for i in range(len(self._get_dom_interfaces_elements_list(inst_name)))]
 
     def is_vif_exist(self, inst_name, vif_index):
         """
-        @param vif_index: the interface index in guest VM
+        @param vif_index: the interface index in guest VM, a integer number
         @return: True if exist else False
         """
-        raise NotImplementedError()
+        if vif_index in self.get_all_vifs_indexes():
+            return True
+        else:
+            return False
 
     def create_new_vif(self, inst_name, vif_index, device_name=None, network=None, MAC=None):
         """
@@ -284,7 +319,7 @@ class QemuVnetDriver(VnetDriver):
 
     def destroy_vif(self, inst_name, vif_index):
         """
-        @param vif_ref: reference object to virtual interface in guest VM
+        @param vif_index: reference object to virtual interface in guest VM
         """
         raise NotImplementedError()
 
@@ -304,20 +339,17 @@ class QemuVnetDriver(VnetDriver):
         """
         raise NotImplementedError()
 
-    def get_vif_info(self, inst_name, vif_index):
+    def __get_mac_and_ip(self, element):
         """
-        return a dict of vif information, MAC, IP, etc
-        :param inst_name:
-        :param vif_index:
-        :return:
+        :param element:
+        :return: mac and ip tuple
         """
-        raise NotImplementedError()
-
-    def get_all_vif_info(self, inst_name):
-        """
-        :return: return all the VIFs's information: mac and IP
-        """
-        raise NotImplementedError()
+        try:
+            mac = element.find("mac").attrib.get("address", None)
+            ip_str = ".".join(["%s" % (int(item, 16)) for item in str(mac).split(":")[2:]])
+            return (mac, ip_str)
+        except (ValueError, IndexError):
+            return (None, None)
 
     def get_vif_ip(self, inst_name, vif_index):
         """
@@ -325,20 +357,52 @@ class QemuVnetDriver(VnetDriver):
         :param vif_index:
         :return:
         """
-        raise NotImplementedError()
+        vif_list = self._get_dom_interfaces_elements_list(inst_name=inst_name)
 
-    def get_host_manage_interface_infor(self):
+        for index, element in enumerate(vif_list):
+            if index == int(vif_index):
+                log.warn("The ip was mapped from MAC, make sure your domain get IP mapped from MAC.")
+                _, ip_str = self.__get_mac_and_ip(element)
+                return ip_str
+        else:
+            log.warn("No virtual interface with index [%s] in domain: [%s].", vif_index, inst_name)
+            return None
+
+    def get_vif_info(self, inst_name, vif_index):
         """
-        The manage interface, or the default interface configured with a managed IP
+        return a dict of vif information, MAC, IP, etc
+        :param inst_name:
+        :param vif_index:
         :return:
         """
-        raise NotImplementedError()
+        vif_list = self._get_dom_interfaces_elements_list(inst_name=inst_name)
+        vif_dict = {}
 
-    def get_host_bond_info(self):
+        for index, element in enumerate(vif_list):
+            if index == int(vif_index):
+                log.warn("The ip was mapped from MAC, make sure your domain get IP mapped from MAC.")
+                mac, ip_str = self.__get_mac_and_ip(element)
+                vif_dict.setdefault("mac", mac)
+                vif_dict.setdefault('ip', ip_str)
+                return vif_dict
+        else:
+            log.warn("No virtual interface with index [%s] in domain: [%s].", vif_index, inst_name)
+            return vif_dict
+
+    def get_all_vif_info(self, inst_name):
         """
-        :return: return the bond information
+        :return: return all the VIFs's information: mac and IP
         """
-        raise NotImplementedError()
+        vif_list = self._get_dom_interfaces_elements_list(inst_name)
+        vifs_info = {}
+
+        log.warn("The IP was mapped from MAC, make sure your domain get IP mapped from MAC.")
+        for index, element in enumerate(vif_list):
+            mac, ip_str = self.__get_mac_and_ip(element)
+            vifs_info[index] = {'mac': mac, 'ip': ip_str}
+
+        return vifs_info
+
 
     def get_vif_network_name(self, inst_name, vif_index):
         """
@@ -346,7 +410,69 @@ class QemuVnetDriver(VnetDriver):
         :param vif_index:
         :return: the bridge name which the vif attached to
         """
-        raise NotImplementedError()
+        if not self._hypervisor_handler:
+            self._hypervisor_handler = self.get_handler()
+
+        domain = self._get_domain_handler(domain_name=inst_name)
+        if not domain:
+            log.error("Domain %s doesn't exist, can not get network name.", inst_name)
+            return None
+
+        tree = xmlEtree.fromstring(domain.XMLDesc())
+        source_bridge_list = tree.findall('devices/interface/source')
+        try:
+            netwrok_name  = source_bridge_list[int(vif_index)].get('network', None)
+            return netwrok_name
+        except IndexError:
+            log.error("No interface with index %s on domain: %s", vif_index, inst_name)
+            return None
+
+    def get_vif_bridge_name(self, inst_name, vif_index):
+        """
+        :param inst_name:
+        :param vif_index:
+        :return: the bridge name which the vif attached to
+        """
+        if not self._hypervisor_handler:
+            self._hypervisor_handler = self.get_handler()
+
+        domain = self._get_domain_handler(domain_name=inst_name)
+        if not domain:
+            log.error("Domain %s doesn't exist, can not get network name.", inst_name)
+            return None
+
+        tree = xmlEtree.fromstring(domain.XMLDesc())
+        source_bridge_list = tree.findall('devices/interface/source')
+        try:
+            bridge_name = source_bridge_list[int(vif_index)].get('bridge', None)
+            return bridge_name
+        except IndexError:
+            log.error("No interface with index %s on domain: %s", vif_index, inst_name)
+            return None
+
+    # Host network API
+    def get_host_manage_interface_infor(self):
+        """
+        The manage interface, or the default interface configured with a managed IP
+        :return:
+        """
+        try:
+            raise NotImplementedError()
+        except NotImplementedError:
+            log.warn("get host nanage interface is not supported in KVM by now.")
+
+        return {}
+
+    def get_host_bond_info(self):
+        """
+        :return: return the bond information
+        """
+        try:
+            raise NotImplementedError()
+        except NotImplementedError:
+            log.warn("Get host bond info is not supported in KVM by now.")
+
+        return {}
 
     def get_bridge_name(self, device_name):
         """
@@ -366,3 +492,16 @@ class QemuVnetDriver(VnetDriver):
         return 'unKnown'
 
 
+if __name__ == "__main__":
+    from optparse import OptionParser
+    parser = OptionParser()
+    parser.add_option("--host", dest="host", help="IP for host server")
+    parser.add_option("-u", "--user", dest="user", help="User name for host server")
+    parser.add_option("-p", "--pwd", dest="passwd", help="Passward for host server")
+    (options, args) = parser.parse_args()
+    virt = QemuVnetDriver(hostname=options.host, user=options.user, passwd=options.passwd)
+
+    pifs = virt.get_all_devices()
+    print pifs
+    for pif in pifs:
+        print virt.get_bridge_name(pif)

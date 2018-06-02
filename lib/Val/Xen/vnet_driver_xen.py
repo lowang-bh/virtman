@@ -33,7 +33,7 @@ class XenVnetDriver(VnetDriver):
                 log.debug("Release handler in vnet driver, ID:%s", id(self._hypervisor_handler))
                 self._hypervisor_handler.xenapi.session.logout()
                 self._hypervisor_handler = None
-        except Exception, error:
+        except Exception as error:
             log.debug(error)
 
     def get_handler(self):
@@ -53,7 +53,7 @@ class XenVnetDriver(VnetDriver):
         signal.alarm(4)   #  connetctions timeout set to 5 secs
         try:
             self._hypervisor_handler.xenapi.login_with_password(self.user, self.passwd, API_VERSION_1_1, 'XenVirtDriver')
-        except Exception, error:
+        except Exception as error:
             log.warn("Exception raised: %s when get handler.", error)
             log.info("Retry connecting to :%s", "https://" + str(self.hostname))
             self._hypervisor_handler = XenAPI.Session("https://" + str(self.hostname))
@@ -80,7 +80,7 @@ class XenVnetDriver(VnetDriver):
                 log.debug("Release handler manually in vnet driver, ID:%s", id(self._hypervisor_handler))
                 self._hypervisor_handler.xenapi.session.logout()
                 self._hypervisor_handler = None
-        except Exception, error:
+        except Exception as error:
             log.debug(error)
 
     def get_bridge_list(self):
@@ -144,7 +144,7 @@ class XenVnetDriver(VnetDriver):
         try:
             all_pifs = self._hypervisor_handler.xenapi.PIF.get_all()
             return [self._hypervisor_handler.xenapi.PIF.get_device(pif) for pif in all_pifs]
-        except Exception, error:
+        except Exception as error:
             log.exception(error)
             return []
 
@@ -271,7 +271,7 @@ class XenVnetDriver(VnetDriver):
 
         try:
             return self._hypervisor_handler.xenapi.network.create(new_network_record)
-        except Exception, error:
+        except Exception as error:
             log.exception("Exceptions: %s", error)
             return None
 
@@ -321,8 +321,9 @@ class XenVnetDriver(VnetDriver):
             all_vifs = self.get_all_vifs_indexes(inst_name)
             guest_metrics_ref = self._hypervisor_handler.xenapi.VM.get_guest_metrics(vm_ref)
             network_dict = self._hypervisor_handler.xenapi.VM_guest_metrics.get_networks(guest_metrics_ref)
-        except Exception, error:
+        except Exception as error:
             log.debug("Except in get_vif_ip: %s", error)
+            return None
 
         try:
             vif_key = sorted(all_vifs).index(str(vif_index))
@@ -330,9 +331,12 @@ class XenVnetDriver(VnetDriver):
             log.error("Vif index does not exist.")
             return None
 
+        # by test, if there are vif 0,1,3, and each device with a ip, then the dic are about "2/ip: 192.168.1.122;  1/ip: 192.168.1.200;  0/ip: 10.143.248.253;"
+        # if there are vif 0,1,2,3, with ip attached to 0,1,3, then the dic looks like "3/ip: 192.168.1.122;1/ip: 192.168.1.200;  0/ip: 10.143.248.253;"
+
         return network_dict.get(str(vif_key)+"/ip", None)
 
-    def get_vif_network_name(self, inst_name, vif_index):
+    def get_vif_bridge_name(self, inst_name, vif_index):
         """
         :param inst_name:
         :param vif_index:
@@ -353,6 +357,14 @@ class XenVnetDriver(VnetDriver):
         bridge_name = self._get_bridge_name_by_networkref(network_ref)
         return bridge_name if bridge_name else None
 
+    def get_vif_network_name(self, inst_name, vif_index):
+        """
+        This function return bridge name for network name in Xen
+        :param inst_name:
+        :param vif_index:
+        :return:
+        """
+        return self.get_vif_bridge_name(inst_name, vif_index)
 
     def get_vif_info(self, inst_name, vif_index):
         """
@@ -401,12 +413,15 @@ class XenVnetDriver(VnetDriver):
             guest_metrics_ref = self._hypervisor_handler.xenapi.VM.get_guest_metrics(vm_ref)
             # When vm first start up, the guest_metrics_ref is 'OpaqueRef:NULL', so no networks information
             network_dict = self._hypervisor_handler.xenapi.VM_guest_metrics.get_networks(guest_metrics_ref)
-        except Exception, error:
+        except Exception as error:
             log.debug("Exceptions when get VM_guest_metrics: %s", error)
             network_dict = {}
 
+        # by test, if there are vif 0,1,3, and each device with a ip, then the dic are about "2/ip: 192.168.1.122;  1/ip: 192.168.1.200;  0/ip: 10.143.248.253;"
+        # if there are vif 0,1,2,3, with ip attached to 0,1,3, then the dic looks like "3/ip: 192.168.1.122; 1/ip: 192.168.1.200;  0/ip: 10.143.248.253;"
         for vkey, vindex in enumerate(sorted(vifs_info.keys())):
-            vifs_info[vindex].setdefault('ip', network_dict.get(str(vindex)+"/ip", None))
+            vifs_info[vindex].setdefault('ip', network_dict.get(str(vkey) + "/ip", None)) # should use the index, not device_index
+            #vifs_info[vindex].setdefault('ip', network_dict.get(str(vindex)+"/ip", None))
         log.debug("All vif infor: %s", vifs_info)
 
         return vifs_info
@@ -497,7 +512,7 @@ class XenVnetDriver(VnetDriver):
 
         try:
             self._hypervisor_handler.xenapi.VIF.destroy(vif_ref)
-        except Exception, error:
+        except Exception as error:
             log.exception("Exceptions raised when destroy VIF:%s", error)
             return False
         return True
@@ -524,7 +539,7 @@ class XenVnetDriver(VnetDriver):
 
         try:
             self._hypervisor_handler.xenapi.VIF.plug(vif_ref)
-        except Exception, error:
+        except Exception as error:
             log.error("Exception raised when hot-plug a VIF:%s.", error)
             return False
         return True
@@ -552,7 +567,7 @@ class XenVnetDriver(VnetDriver):
 
         try:
             self._hypervisor_handler.xenapi.VIF.unplug(vif_ref)
-        except Exception, error:
+        except Exception as error:
             log.exception("Exceptions raised when unplug a VIF:%s", error)
             return False
         return True

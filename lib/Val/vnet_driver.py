@@ -82,7 +82,7 @@ class VnetDriver(object):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def create_new_vif(self, inst_name, vif_index, device_name=None, network=None, MAC=None):
+    def create_new_vif(self, inst_name, vif_index, device_name=None, network=None, bridge=None, MAC=None):
         """
         @param inst_name: name of the guest VM
         @param device_name: device name on the host which the network belong to
@@ -188,3 +188,13 @@ class VnetDriver(object):
         :return:
         """
         raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_vif_bridge_name(self, inst_name, vif_index):
+        """
+        :param inst_name:
+        :param vif_index:
+        :return: the bridge name which the vif attached to
+        """
+        raise NotImplementedError()
+

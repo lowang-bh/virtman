@@ -331,7 +331,7 @@ class VirtHostDomain(ServerDomain):
 
         vifs_info = self.vnet_driver.get_all_vif_info(inst_name=inst_name)
         for vif_index in sorted(vifs_info):
-            bridge_name = self.vnet_driver.get_vif_network_name(inst_name=inst_name, vif_index=vif_index)
+            bridge_name = self.vnet_driver.get_vif_bridge_name(inst_name=inst_name, vif_index=vif_index)
             mac, ip = vifs_info[vif_index]['mac'], vifs_info[vif_index]['ip']
             log.info("\t%s\tMAC: %s, IP: %15s, Bridge: %s", vif_index, mac, ip, bridge_name)
 
@@ -347,7 +347,8 @@ class VirtHostDomain(ServerDomain):
         disk_info = {}
         disk_dict = self.virt_driver.get_all_disk(inst_name=inst_name)
         for disk_num in disk_dict:
-            size = str(self.virt_driver.get_disk_size(inst_name=inst_name, device_num=disk_num)) + " GB"
+            #size = str(self.virt_driver.get_disk_size(inst_name=inst_name, device_num=disk_num)) + " GB"
+            size = str(disk_dict[disk_num]['disk_size']) + "  GB"
             disk_info.setdefault(disk_num, size)
 
         return disk_info
@@ -362,8 +363,10 @@ class VirtHostDomain(ServerDomain):
 
         disk_dict = self.virt_driver.get_all_disk(inst_name=inst_name)
         for disk_num in sorted(disk_dict):
-            size = str(self.virt_driver.get_disk_size(inst_name=inst_name, device_num=disk_num)) + " GB"
-            log.info("\t%s\t%s", disk_num, size)
+            #size = str(self.virt_driver.get_disk_size(inst_name=inst_name, device_num=disk_num)) + " GB"
+            size = str(disk_dict.get(disk_num, {}).get('disk_size')) + " GB"
+            free = str(disk_dict.get(disk_num, {}).get('disk_free', None)) + " GB"
+            log.info("\t%s\tTotal:%s\tFree:%s", disk_num, size, free)
 
     def print_vm_info(self, inst_name):
         """
@@ -413,9 +416,10 @@ class VirtHostDomain(ServerDomain):
 
         disk_info = self.virt_driver.get_all_disk(inst_name=inst_name)
         disk_num = len(disk_info)
-        disk_size = self.virt_driver.get_disk_size(inst_name, 0)  # only write the system disk size when create
+        #disk_size = self.virt_driver.get_disk_size(inst_name, 0)  # only write the system disk size when create
+        disk_size = disk_info.get(0, {}).get('disk_size', 0) #device_num with 0 default to be system disk
 
-        vm_host_ip = self.vnet_driver.get_host_manage_interface_infor()['IP']
+        vm_host_ip = self.vnet_driver.get_host_manage_interface_infor().get('IP', None)
 
         ret = self.db_driver.create(hostname, sn, cpu_cores, int(memory_size), int(disk_size), disk_num,
                                     vm_host_ip=vm_host_ip)
@@ -463,12 +467,14 @@ class VirtHostDomain(ServerDomain):
             power_state = "unknown"
 
         disk_info = self.virt_driver.get_all_disk(inst_name=inst_name)
-        disk_size, disk_num = 0, 0
+        disk_size, disk_num, disk_free = 0, 0, 0
         for disk in disk_info:
-            size = self.virt_driver.get_disk_size(inst_name, disk)
+            size = disk_info[disk]['disk_size'] # self.virt_driver.get_disk_size(inst_name, disk)
             if size >= 1:
                 disk_size += size
                 disk_num += 1 # exclude those cd
+                if disk_info[disk].get('disk_free', None) is not None:
+                    disk_free += disk_info[disk].get('disk_free')
 
         vif_dic = self.vnet_driver.get_all_vif_info(inst_name)
         #first_ip = vif_dic.get('0', {}).get('ip', None)
@@ -481,7 +487,7 @@ class VirtHostDomain(ServerDomain):
             second_ip = vif_dic.get(key_list[1], {}).get('ip', None)
         # second_ip is local ip
         #second_ip = vif_dic.get('1', {}).get('ip', None)
-        vm_host_ip = self.vnet_driver.get_host_manage_interface_infor()['IP']
+        vm_host_ip = self.vnet_driver.get_host_manage_interface_infor().get('IP', None)
 
         os_info = self.virt_driver.get_os_type(inst_name, short_name=False)
 
@@ -489,6 +495,7 @@ class VirtHostDomain(ServerDomain):
                      "memory_size": int(memory_size),
                      "disk_num": int(disk_num),
                      "disk_size": int(disk_size),
+                     "disk_free": int(disk_free) if disk_free else None,
                      "first_ip": first_ip,
                      "second_ip": second_ip,
                      "vm_host_ip": vm_host_ip,
