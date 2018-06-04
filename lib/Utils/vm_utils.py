@@ -54,14 +54,15 @@ class VirtHostDomain(ServerDomain):
         return True
 
     # TODO: need to add bridge, kvm use device, network or bridge to create vif, xen use device, bridge(network same as bridge)
-    # TODO: vnet_driver.create_new_vif in xen an kvm will use device, network or bridge branch according to the given params
+    # TODO: vnet_driver.create_new_vif, kvm will use device, network or bridge branch according to the given params
     def create_new_vif(self, inst_name, vif_index, device_name=None, network=None, bridge=None, ip=None):
         """
         create a new virtual interface on the target VM
         @param inst_name: Vm name
-        @param device_name: vswitch (with the host-device attached) which the vif attach to
+        @param device_name: physical interface name (with the host-device attached with a bridge)
         @param vif_index: vif index
-        @param network: bridge name
+        @param network: network name, in kvm the network is defined by libvirt, in xen, treat it same as the bridge name
+        @param bridge: bridge name on which the network is defined
         @param ip
         """
         log.info("Start to add a new virtual interface device with index:[%s] to VM [%s]", vif_index, inst_name)
