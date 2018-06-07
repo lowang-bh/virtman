@@ -8,7 +8,6 @@
 #########################################################################
 
 import os
-import subprocess
 import signal
 import libvirt
 import xml.etree.ElementTree as xmlEtree
@@ -897,7 +896,7 @@ class QemuVirtDriver(VirtDriver):
 
     def set_vm_vcpu_live(self, inst_name, vcpu_num):
         """
-        set the vcpu numbers for a running VM;and set vcpus in the config file when domain is deactive
+        set the vcpu numbers for a running VM; and set vcpus in the config file when domain is deactive
         :param inst_name:
         :param vcpu_num: should be str of a int number
         :return: True or False
@@ -926,6 +925,8 @@ class QemuVirtDriver(VirtDriver):
     def set_vm_vcpu_max(self, inst_name, vcpu_num):
         """
         set the vcpu numbers for a halted VM; when vm is active, the setting will take effect when next reboot
+        if an error "CPU topology doesn't match the desired vcpu count" when set max vcpu, maybe the topology in xml has
+        a number of vcpu: sockets * cores * threads does not equal to max vcpus to be set
         :param inst_name:
         :param vcpu_num:
         :return: True or False
@@ -1030,8 +1031,8 @@ class QemuVirtDriver(VirtDriver):
         """
         set memory for a domain, if it is active, set it lively and the config file, if it is deactive, set the config file
         :param inst_name:
-        :param max_memory:
-        :param min_memory:
+        :param memory_max:
+        :param memory_min:
         :return:
         """
         dom = self._get_domain_handler(domain_name=inst_name)
@@ -1103,4 +1104,4 @@ if __name__ == "__main__":
     # print ret
     # virt.power_on_vm("new_vm")
 
-    virt.delete_instance("new_vm", True)
+    # virt.delete_instance("new_vm", True)
