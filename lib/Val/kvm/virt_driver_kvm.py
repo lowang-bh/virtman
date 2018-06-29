@@ -267,12 +267,15 @@ class QemuVirtDriver(VirtDriver):
                 log.info("Power off failed, try to poweroff forcely.")
                 domain.destroy()  # It will shutdown the domain force, if it is already shutdown, libvirtError will raise
 
-        self.detach_disk_from_domain(inst_name, force=delete_disk)
+        try:
+            self.detach_disk_from_domain(inst_name, force=delete_disk)
+        except libvirtError:
+            pass
 
         try:
             ret = domain.undefine() # may use undefineFlags to handler managed save image or snapshots
         except libvirtError as error:
-            log.exception("Exception raise when delete domain [%s]: %s.", inst_name, error)
+            log.exception("Exception raise when undefine domain [%s]: %s.", inst_name, error)
             return False
 
         return ret == 0
@@ -654,9 +657,9 @@ class QemuVirtDriver(VirtDriver):
         """
         all_names = [str(filename).split(".")[0] for filename in filter(lambda x: inst_name in x, self._get_all_vdisk_name())]
         log.debug("all vdisk name with inst name :%s, %s", inst_name, all_names)
-        nextindex = len(all_names)
+        nextindex = len(all_names) - 1
 
-        new_name = inst_name # + "-" + str(nextindex)
+        new_name = inst_name
         while new_name in all_names:
             nextindex += 1
             new_name = inst_name+ "-" + str(nextindex)
@@ -784,12 +787,16 @@ class QemuVirtDriver(VirtDriver):
         </disk>""" % (disk_type, target_volume, dev)
         disk_elment = xmlEtree.fromstring(disk_xml_str)
         device_elment.append(disk_elment)
-        # new_xml = xmlEtree.tostring(tree)
-        # ret = self._hypervisor_handler.defineXML(new_xml)
-        if dom.isActive():
-            ret = dom.attachDeviceFlags(disk_xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE|libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-        else:
-            ret = dom.attachDeviceFlags(disk_xml_str)
+
+        try:
+            if dom.isActive():
+                ret = dom.attachDeviceFlags(disk_xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE|libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            else:
+                ret = dom.attachDeviceFlags(disk_xml_str)
+        except libvirtError as error:
+            log.exception("Exception when attach disk: %s", error)
+            return False
+
         return ret == 0
 
     def detach_disk_from_domain(self, inst_name, target_volume=None, force=False):
@@ -878,7 +885,12 @@ class QemuVirtDriver(VirtDriver):
             file_path = disk_elment.find('source').get('file')
             log.debug("Disks on domain [%s]: disk path: %s",inst_name, file_path)
 
-            volume_info = self._hypervisor_handler.storageVolLookupByPath(file_path).info()
+            try:
+                volume_info = self._hypervisor_handler.storageVolLookupByPath(file_path).info()
+            except libvirtError as error:
+                log.warn("Exception: %s", error)
+                continue
+
             disk_dize = volume_info[1]/1024.0/1024.0/1024.0
             disk_free = (volume_info[1] - volume_info[2])/1024.0/1024.0/1024.0
             disk_free = float("%.3f" %disk_free)
@@ -1019,12 +1031,18 @@ class QemuVirtDriver(VirtDriver):
         if memory_max:
             memory_size = int(memory_max) * gitabyte
         elif memory_min:
-            memory_size = int(memory_min) * gitabyte
+            log.info("Don't support min memory set.")
+            return True
         else:
             log.error("Neither maxMemory nor minMemory is supplied.")
             return False
         # dom.setMemoryFlags(memory_size, libvirt.VIR_DOMAIN_AFFECT_CURRENT|libvirt.VIR_DOMAIN_MEM_MAXIMUM) also OK
-        ret = dom.setMaxMemory(memory_size)
+        try:
+            ret = dom.setMaxMemory(memory_size)
+        except libvirtError as error:
+            log.exception("Exception: %s", error)
+            return False
+
         return ret == 0
 
     def set_vm_dynamic_memory(self, inst_name, memory_max=None, memory_min=None):
@@ -1042,15 +1060,19 @@ class QemuVirtDriver(VirtDriver):
         if memory_max:
             memory_size = int(memory_max) * gitabyte
         elif memory_min:
-            memory_size = int(memory_min) * gitabyte
+            log.info("Don't support min memory set.")
+            return True
         else:
             log.error("Neither maxMemory nor minMemory is supplied.")
             return False
-        #
-        if dom.isActive():
-            ret = dom.setMemoryFlags(memory_size, libvirt.VIR_DOMAIN_AFFECT_LIVE|libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-        else:
-            ret =dom.setMemoryFlags(memory_size) # dom.setMemory need dom to be active
+        try:
+            if dom.isActive():
+                ret = dom.setMemoryFlags(memory_size, libvirt.VIR_DOMAIN_AFFECT_LIVE|libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+            else:
+                ret =dom.setMemoryFlags(memory_size) # dom.setMemory need dom to be active
+        except libvirtError as error:
+            log.exception("Exception: %s", error)
+            return False
 
         return ret == 0
 
@@ -1067,7 +1089,11 @@ class QemuVirtDriver(VirtDriver):
             return False
 
         memory_size = int(memory_target) * 1024 * 1024  # memory in KB
-        ret = dom.setMemoryFlags(memory_size, libvirt.VIR_DOMAIN_AFFECT_LIVE|libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        try:
+            ret = dom.setMemoryFlags(memory_size, libvirt.VIR_DOMAIN_AFFECT_LIVE|libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+        except libvirtError as error:
+            log.exception("Exception: %s", error)
+            return False
 
         return ret == 0
 

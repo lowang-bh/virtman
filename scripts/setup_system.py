@@ -35,13 +35,16 @@ if __name__ == "__main__":
     else:
         parser.print_help()
         exit(1)
+    if len(args) != 1:
+        parser.print_help()
+        exit(1)
 
     filename = args[0]
     if not os.path.isfile(filename):
         log.fail("Can not find xml file: %s, please check it.", filename)
         exit(1)
-
-    if not xml_utils.validate("../etc/schema.xsd", filename):
+    schema_filepath = os.path.dirname(__file__)
+    if not xml_utils.validate(os.path.join(schema_filepath, "../etc/schema.xsd"), filename):
         log.fail("XML file '%s' did not validate with the schema.xsd!", filename)
         exit(1)
 
